@@ -27,20 +27,20 @@ global tables keep(${model}) se label replace noobs compress
 
 /// Generate Outcomes in Logarithms y = ln(1+x)
 foreach y in $outcomes {
-gen log`y' = ln(`y')
-copydesc `y' log`y'	
+gen asinh`y' = asinh(`y')
+copydesc `y' asinh`y'	
 }
 
 local i = 1
 foreach y in $outcomes  {
 /// Estimate the Linear Regression Model: Outcome is log y 
-eststo modlinear`i': reghdfe log`y' ${model} if ${conditional}, ${regopts}  
+eststo modlinear`i': reghdfe asinh`y' ${model}, ${regopts}  
 qui estadd ysumm, replace
 qui tempfile modlinear`i'
 regsave using `modlinear`i'', ${regsaveopts}
 
 /// Estimate Poisson Regression Model 
-eststo modpoiss`i': ppmlhdfe `y' ${model} if ${conditional}, ${regopts}  
+eststo modpoiss`i': ppmlhdfe `y' ${model}, ${regopts}  
 qui estadd ysumm, replace
 qui tempfile modpoiss`i'
 regsave using `modpoiss`i'', ${regsaveopts}

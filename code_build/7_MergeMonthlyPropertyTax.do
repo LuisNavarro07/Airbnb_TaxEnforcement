@@ -126,8 +126,10 @@ global max = r(max)
 /// Missings from tyhe main variables in the models
 mdesc citytaxrate revenueusd revenueperday
 generate modelmiss = 0 
-replace modelmiss = 1 if revenueusd == . | citytaxrate == . 
+replace modelmiss = 1 if citytaxrate == . 
 tab year modelmiss
+/// Assumption: Drop all observations from which we do not have the city sale tax rate 
+drop if citytaxrate == . 
 /// Generate outcome: Total Days: Reservation Days + Available Days 
 gen totaldays = reservationdays + availabledays
 

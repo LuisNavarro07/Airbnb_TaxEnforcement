@@ -86,7 +86,7 @@ qui drop treat*
 qui drop dated* 
 tempfile taxchanges
 save `taxchanges', replace 
-save "${bt}\taxrates_changes.dta", replace 
+save "${bt}/taxrates_changes.dta", replace 
 
 ******************************************************
 /// Loadl Monthly DataSet 
@@ -143,7 +143,7 @@ local date3 = tm(2018m1)
 local date4 = tm(2018m7)
 local date5 = tm(2019m1)
 /// For each sub exeperiment 
-forvalues j = 3(1)5{
+forvalues j = 3(1)5{ 
 /// Local to denote the periods 
 local a = `j' - 2
 local b = `j' - 1
@@ -155,7 +155,7 @@ local d = `j' + 1
 
 preserve 
 keep if dated`a' == 1 | dated`b' == 1 | dated`c' == 1 | dated`d' == 1
-keep id monthlydate treat`j' tax_change 
+keep id monthlydate treat`j' tax_change HomeRule
 /// Rectangularize the dataset 
 fillin id monthlydate
 xtset id monthlydate 
@@ -200,16 +200,16 @@ qui replace post = 1 if et >= 1
 /// Number of Pre and Post Periods (leads first)
 tab et if post == 0 
 local pre = r(r) 
-display "`pre' Leads"
+
 /// Lag - Post Periods 
 tab et if post == 1 
 local post = r(r)
-display "`post' Lags"
+
 /// 2.3 Create Lags (Pre-Periods)
 /// Leads - Pre Periods 
 forvalues k = 2(1)`pre' {
 qui gen lead`k' = F`k'.${independent}
-qui replace lead`k' = 0 if lead`k' == 
+qui replace lead`k' = 0 if lead`k' == .
 qui label variable lead`k' "-`k'"
 }
 /// 2.4 Create Leads (Post-Periods)
@@ -222,13 +222,21 @@ forvalues k = 1(1)`post' {
 qui gen lag`k' = L`k'.${independent}
 sort id et
 qui replace lag`k' = 0 if lag`k' == .
-qui label variable lag`k' "`k'"
+qui label variable lag`k' "+`k'"
 }
 
 label variable lead1 "-1"
 label variable lead0 "0"
 
 capture order id et lead12 lead11 lead10 lead9 lead8 lead7 lead6 lead5 lead4 lead3 lead2 lead1 lead0 lag1 lag2 lag3 lag4 lag5 lag6 lag7 lag8 lag9 lag10 lag11 lag12
+
+/// Triple Interactions 
+local varlist lead12 lead11 lead10 lead9 lead8 lead7 lead6 lead5 lead4 lead3 lead2 lead1 lead0 lag1 lag2 lag3 lag4 lag5 lag6 lag7 lag8 lag9 lag10 lag11 lag12
+foreach var of local varlist {
+gen `var'hr = `var'*HomeRule
+copydesc `var' `var'hr
+}
+
 
 tempfile eventime`j'
 save `eventime`j'', replace 
