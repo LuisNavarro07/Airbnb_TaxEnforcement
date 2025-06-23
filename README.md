@@ -198,3 +198,129 @@ This Stata script constructs a market-level dataset from Colorado Airbnb propert
 ## Functions Created
 
 - `market_level_data`: A Stata program that (1) aggregates listing and policy data to the ZIP-level, (2) merges housing unit counts, (3) computes listing density, and (4) constructs DiD weights using the `compute_weights` program from earlier scripts.
+
+
+# Data Analysis and Regression Estimation 
+
+## 0_Programs.do 
+
+### Description 
+
+This stata script contains all the user-written programs that are used for the regression analysis. 
+
+### Programs Created 
+
+- `final_prep_stacked`: final data prep done before regression analysis. 
+- `compute_weights`: Program that compute the stacked sample weights defined by Hollingsworth, Wing and Freedman. 
+- `create_df_results`: Program that format the regression results into a data frame. 
+- `pre_trends_ate_lincom_test`: Program that uses `lincom` to compute the pre-trends Wald test and computes the Average Treatment Effect (ATE) .
+- `pre_trends_ate_lincom_test_fs`: Program that uses `lincom` to compute the pre-trends Wald test and computes the Average Treatment Effect (ATE) for the first stage analysis. 
+- `stacked_did_models`: Program that estimates the stacked DiD models.
+- `stacked_did_models_unweighted`: Variant for unweighted estimation.
+- `stacked_did_models_weighted`: Variant for weighted estimation using stack/IPW weights.
+- `stacked_did_models_fs_unweighted`: Variant for unweighted estimation for the first stage analysis.
+- `stacked_did_models_fs_weighted`: Variant for weighted estimation using stack/IPW weights for the first stage analysis.
+
+  
+## Script: 1_StackedDID_Estimation.do
+
+### Description
+
+This Stata script estimates stacked Difference-in-Differences (DiD) models to evaluate how Airbnb listing behavior responds to local tax enforcement policies. The script uses both binary (treated vs. control) and continuous (magnitude of tax change) treatments, with models stratified by home rule status and weighted using combinations of stack weights and inverse probability weights (IPW). It performs the estimation separately for two key outcomes: reservation days (extensive margin) and the likelihood of being listed (intensive margin). The script runs sub-experiment–specific models as well as pooled regressions across all sub-experiments. Each estimation routine applies the appropriate DiD setup using previously prepared data and saves the resulting model outputs for downstream analysis.
+
+### Inputs
+
+- `${ai}/rcstackdid.dta`: Stacked DiD dataset for reservation days outcome.
+- `${ai}/rcstackdid_rectangular.dta`: Rectangularized panel for listing outcomes.
+- `final_prep_stacked`: User-defined program that prepares data before estimation.
+- `stacked_did_models`: Program that estimates the DiD models.
+- `stacked_did_models_unweighted`: Variant for unweighted estimation.
+- `stacked_did_models_weighted`: Variant for weighted estimation using stack/IPW weights.
+
+### Outputs
+
+- `${ao}/stacked_did_models_results_binary.dta`: Reservation days model (binary treatment).
+- `${ao}/stacked_did_models_results_continuous.dta`: Reservation days model (continuous treatment).
+- `${ao}/stacked_did_models_listed_binary_subexp1.dta`: Listed model (binary, sub-exp 1).
+- `${ao}/stacked_did_models_listed_binary_subexp2.dta`: Listed model (binary, sub-exp 2).
+- `${ao}/stacked_did_models_listed_continuous_subexp1.dta`: Listed model (continuous, sub-exp 1).
+- `${ao}/stacked_did_models_listed_continuous_subexp2.dta`: Listed model (continuous, sub-exp 2).
+- `${ao}/stacked_did_models_listed_binary_unweighted.dta`: Full sample, binary model, unweighted.
+- `${ao}/stacked_did_models_listed_binary_weighted_stack.dta`: Full sample, binary model, stack weights.
+- `${ao}/stacked_did_models_listed_binary_weighted_stack_ipw.dta`: Full sample, binary model, stack × IPW.
+- `${ao}/stacked_did_models_listed_continuous_unweighted.dta`: Full sample, continuous model, unweighted.
+- `${ao}/stacked_did_models_listed_continuous_weighted_stack.dta`: Full sample, continuous model, stack weights.
+- `${ao}/stacked_did_models_listed_continuous_weighted_stack_ipw.dta`: Full sample, continuous model, stack × IPW.
+
+## Script: 2_FirstStageAnalysis.do
+
+### Description
+
+This Stata script estimates first-stage stacked Difference-in-Differences (DiD) models to examine the relationship between tax enforcement policies and the likelihood that an Airbnb property is listed. It evaluates both binary and continuous treatment definitions, using a variety of weighting schemes: unweighted, stack-weighted, and a combination of stack weights and inverse probability weights (IPW). The models are estimated using the full rectangularized panel of property-level data, and results are saved for later use in two-stage models and robustness checks.
+
+### Inputs
+
+- `${ai}/rcstackdid_rectangular.dta`: Rectangular Airbnb panel dataset with treatment status, event time, weights, and covariates.
+- `final_prep_stacked`: External program to finalize dataset preparation.
+- `stacked_did_models_fs_unweighted`: Program for first-stage unweighted model estimation.
+- `stacked_did_models_fs_weighted`: Program for first-stage weighted model estimation (stack and/or IPW weights).
+
+### Outputs
+
+- `${ao}/stacked_did_models_fstage_listed_binary_unweighted.dta`: Binary treatment, unweighted model.
+- `${ao}/stacked_did_models_fstage_listed_binary_weighted_stack.dta`: Binary treatment, stack weights only.
+- `${ao}/stacked_did_models_fstage_listed_binary_weighted_stack_ipw.dta`: Binary treatment, stack × IPW weights.
+- `${ao}/stacked_did_models_fstage_listed_continuous_unweighted.dta`: Continuous treatment, unweighted model.
+- `${ao}/stacked_did_models_fstage_listed_continuous_weighted_stack.dta`: Continuous treatment, stack weights only.
+- `${ao}/stacked_did_models_fstage_listed_continuous_weighted_stack_ipw.dta`: Continuous treatment, stack × IPW weights.
+
+## Script: 3_Market_Level_Analysis.do
+
+### Description
+
+This Stata script performs stacked Difference-in-Differences (DiD) estimation using market-level data aggregated by ZIP code and city. It evaluates both binary and continuous treatment definitions to estimate the effects of tax enforcement policies on the share of listed Airbnb units (`listed_units`). The script applies several model specifications, including unweighted regressions, stack-weighted regressions, and regressions weighted by a combination of stack and inverse probability weights (IPW). It also conducts a first-stage analysis to isolate the effect of tax changes independently from interactions with local autonomy (Home Rule). An extended commented-out section includes exploratory triple difference analyses and synthetic DiD visualizations for robustness and event study dynamics.
+
+### Inputs
+
+- `${ai}/rcstackdid_mkt.dta`: Market-level panel dataset of Airbnb activity by ZIP code and city, with covariates, weights, and treatment timing.
+
+### Outputs
+
+- `${ao}/stacked_did_models_results_market_binary_unweighted.dta`
+- `${ao}/stacked_did_models_results_market_binary_weighted_stack.dta`
+- `${ao}/stacked_did_models_results_market_binary_weighted_stack_ipw.dta`
+- `${ao}/stacked_did_models_results_market_continuous_unweighted.dta`
+- `${ao}/stacked_did_models_results_market_continuous_weighted_stack.dta`
+- `${ao}/stacked_did_models_results_market_continuous_weighted_stack_ipw.dta`
+- `${ao}/stacked_did_models_fstage_market_binary_unweighted.dta`
+- `${ao}/stacked_did_models_fstage_market_binary_weighted_stack.dta`
+- `${ao}/stacked_did_models_fstage_market_binary_weighted_stack_ipw.dta`
+- `${ao}/stacked_did_models_fstage_market_continuous_unweighted.dta`
+- `${ao}/stacked_did_models_fstage_market_continuous_weighted_stack.dta`
+- `${ao}/stacked_did_models_fstage_market_continuous_weighted_stack_ipw.dta`
+
+## Script: 4_DescriptiveGraphs.R
+
+### Description
+
+This R script produces descriptive visualizations for the paper *"State vs Local Tax Enforcement Effectiveness: Evidence from Airbnb Price Data"*. It formats and exports time-series and event-study plots to illustrate the evolution of city-level sales tax rates, Airbnb listing behavior, and reservation patterns. The graphs compare trends across treatment groups (control vs. tax change) and Home Rule status (state vs. local enforcement). It uses cleaned and aggregated datasets, applying custom formatting functions to ensure a consistent aesthetic for publication-ready figures. All plots are saved as `.jpg` files for use in the paper or presentations.
+
+### Inputs
+
+- `ColoradoAllSalesTaxes.dta`: Sales tax data by city and home rule status.
+- `taxrates_changes.dta`: Records of city tax rate changes and treatment dates.
+- `rcstackdid.dta`: Airbnb-level panel dataset for event-time analysis of reservation behavior.
+- `rcstackdid_rectangular.dta`: Rectangular stacked panel with listing probability and treatment flags.
+
+### Outputs
+
+- `taxratechanges_combined.jpg`: Side-by-side plot of sales tax rates over time and relative to tax changes.
+- `graph_homerule_rates.jpg`: Tax rate trends by Home Rule status (mean and median).
+- `stacked_dv_plot_comb.jpg`: Event-study plots of reservation days by treatment and Home Rule.
+- `dv_listed_plot.jpg`: Event-study plot of listing probability by treatment, sub-experiment, and enforcement status.
+- Summary tables of unique Airbnb IDs by sub-experiment and treatment group (printed, not saved).
+
+### Functions or Programs Created
+
+- `format_plot()`: Formats ggplot objects with standardized theme and color settings.
+- `save_graph()`: Wrapper for saving plots in consistent dimensions and resolution.
