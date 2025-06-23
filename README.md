@@ -1,9 +1,24 @@
----
-title:  "Replication Package – State vs. Local Tax Enforcement Effectiveness"
-author: Luis Navarro
-date: "June 2025"
-#output: github_document
----
+
+This file describes in detail the workflow for the scripts that replicate State vs Local Tax Enforcement Effectiveness. 
+
+- *Data Cleaning and Processing (Build)*
+  
+	1.	1_CleanGeoCodePropertyData.do
+	2.	2_SplitPropertyDataForGeoCode.do
+	3.	3_ReverseGeoCode_Colorado.R
+	4.	4_AppendGeoCodeDataFromR.do
+	5.	5_MergeAllGeocodedData.do
+	6.	6_CleanSalesTaxData.do
+	7.	7_MergeMonthlyPropertyTax.do
+	8.	8_PSM_Balance.R
+	9.	9_Build_Feasible_Stacked_DID_Data.do
+	10.	10_CreateMarketLevelData.do
+
+
+- *Data Analysis and Regression Models (Analysis)*
+
+
+# Data Cleaning and Processing (Build)
 
 ## Script: 1_CleanGeoCodePropertyData.do
 
@@ -23,10 +38,6 @@ This script processes and geocodes a dataset of Airbnb property listings in Colo
 - `Colorado_property_match_stacked.dta`: Final cleaned dataset with county and subcounty geocodes and host/property IDs.
 - `Colorado_hostcount.dta`: Summary of the number of properties owned by each host.
 
-### Functions or Programs Created
-- None. The script uses standard Stata commands (`shp2dta`, `geoinpoly`, `egen`, etc.) and does not define custom programs or functions.
-
-
 ## Script: 2_SplitPropertyDataForGeoCode.do
 
 ### Description
@@ -41,9 +52,6 @@ This script prepares Airbnb property data for a reverse geocoding process in R t
 - `Colorado_Property_GeocodeRaw_Above1000.dta`: Properties in cities with 1,000+ listings (flagged for geocoding).
 - `Property_Above1000_*.dta`: Partitioned subsets (∼2,500 records each) of the above-1000 group, saved individually for R-based reverse geocoding.
 
-### Functions or Programs Created
-- None. The script uses standard Stata commands (`egen`, `seq()`, `strtrim`, `tab`, etc.) and global macros. No custom functions or procedures are defined.
-
 ## Script: 3_ReverseGeoCode_Colorado.R
 
 ### Description
@@ -55,8 +63,138 @@ This R script performs reverse geocoding on Airbnb property listings located in 
 ### Outputs
 - `ColoradoReverse_1.csv` to `ColoradoReverse_34.csv`: Reverse-geocoded property datasets saved as `.csv` files containing address information retrieved via OpenStreetMap.
 
+## Script: 4_AppendGeoCodeDataFromR.do
+
+### Description
+This script consolidates the reverse-geocoded outputs generated in R (from Script #3) and merges them back into the original Airbnb dataset for Colorado properties with over 1,000 listings per city. It first imports 34 individual `.csv` files (one per geocoded chunk), converts them to Stata `.dta` format, and appends them into a single file. Then, it loads and appends the corresponding 34 input property files, merging them one-to-one by `propertyid` with the geocoded results. After cleaning auxiliary variables and renaming columns, the script merges the resulting dataset with a county-level FIPS code lookup table to associate each property with its official county identifier. The final merged dataset includes standardized location data necessary for the tax enforcement analysis.
+
+### Inputs
+- `ColoradoReverse_1.csv` to `ColoradoReverse_34.csv`: Reverse-geocoded output files from R.
+- `Property_Above1000_1.dta` to `Property_Above1000_34.dta`: Airbnb property data requiring geocoding.
+- `CountyCodes.dta`: Lookup table mapping county names to official FIPS codes.
+
+### Outputs
+- `ColoradoReverse_full.dta`: Appended reverse-geocoded address dataset.
+- `ColoradoReverse_merged.dta`: Final merged dataset that joins geocoded results with Airbnb properties and includes county FIPS codes.
+
+## Script: 5_MergeAllGeocodedData.do
+
+### Description
+This script merges the reverse-geocoded property dataset (created from cities with more than 1,000 Airbnb listings) with the dataset containing properties from smaller cities (with fewer than 1,000 listings). It consolidates both datasets into a single file and ensures that each property is assigned an appropriate county FIPS code. Properties that did not go through reverse geocoding retain their original FIPS code from Airbnb, while geocoded properties use the updated FIPS from OpenStreetMap data. The script also cleans unneeded variables left over from the merging process and creates a helper variable to identify the origin of each `propertyid`. The resulting dataset is the comprehensive geocoded property file used in the core analysis.
+
+### Inputs
+- `ColoradoReverse_merged.dta`: Geocoded property data from cities with 1,000+ listings (from Script #4).
+- `Colorado_Property_GeocodeRaw_Below1000.dta`: Property data from smaller cities that did not require geocoding.
+
+### Outputs
+- `ColoradoPropertyGeoCodeComplete.dta`: Fully merged and cleaned dataset of all Airbnb properties in Colorado, each with an assigned county FIPS code.
+
+## Script: 6_CleanSalesTaxData.do
+
+### Description
+This script compiles, cleans, and harmonizes local sales tax data for jurisdictions in Colorado from 2016 to 2020. It begins by importing official sales tax rate spreadsheets from the Colorado Department of Revenue and merges them with a home rule classification dataset to distinguish between state- and self-collected jurisdictions. After standardizing naming conventions and correcting inconsistencies in county and city labels, the script merges in official county FIPS codes to facilitate geographic alignment with Airbnb property data. It constructs the primary city-level sales tax variable by extracting tax rates stored in different columns depending on jurisdiction type and uses carryforward methods to impute missing values in otherwise stable time series.
+
+The script also integrates auxiliary tax datasets, including county and city lodging taxes and information on Airbnb tax collection agreements. It then constructs a composite **excise tax** variable as the sum of state, county, and lodging taxes, and interacts each tax with the home rule indicator to allow for heterogeneous treatment effects in the empirical analysis. The final output is a cleaned panel dataset with consistent city identifiers, time-stamped tax rates, and relevant fiscal indicators, used throughout the main analysis.
+
+### Inputs
+- `HomeRuleColorado2021.xlsx`: Classification of jurisdictions as state- or self-collected.
+- `Colorado_Jurisdiction_Codes_Rates_*.xlsx`: Colorado DOR tax rate files for 2016–2020 (by semester).
+- `Colorado_countycodes.xlsx`: Lookup table for official FIPS codes.
+- `CountyLodgingTax.xlsx`: Contains both county and city lodging tax rates and Airbnb agreement status.
+
+### Outputs
+- `ColoradoSalesTaxClean.dta`: Final cleaned and merged dataset of city-level tax rates and jurisdiction characteristics (2017–2019 sample) with all relevant covariates for analysis.
+
+## Script: 7_MergeMonthlyPropertyTax.do
+
+### Description
+This script merges Airbnb's monthly-level property performance data with geocoded location data and tax information to build the final panel dataset used in the empirical analysis. It first processes the raw CSV file of monthly listings and filters for properties located in Colorado. It then merges in city-level tax rates, home rule status, and other fiscal variables using a combination of FIPS codes, ZIP codes, and city names. Manual adjustments ensure accurate classification of home rule jurisdictions when missing. The script also aligns temporal variables, such as semester and monthly date formats, to ensure proper matching.
+
+After merging, the script constructs derived variables including **revenue per day**, total listing days, and indicators for missing data. It filters the sample to 2017–2019 and retains only listings located in Metropolitan or Micropolitan Statistical Areas (MSAs). Finally, the script merges MSA identifiers using crosswalk files and saves a cleaned dataset containing only the variables needed for the analysis.
+
+### Inputs
+- `us_Monthly_Match_2020-02-11.csv`: Nationwide Airbnb monthly-level performance dataset.
+- `ColoradoPropertyGeoCodeComplete.dta`: Geocoded property dataset (from Script #5).
+- `ColoradoSalesTaxClean.dta`: Cleaned tax data with home rule status and city sales tax (from Script #6).
+- `salestaxdatafull_1523.dta`: National tax dataset with monthly ZIP-code-level rates.
+- `cbsa2fipsxw.dta`: Crosswalk of county FIPS codes to CBSA/MSA codes.
+- `CountyCodes.dta`: State and county FIPS metadata.
+
+### Outputs
+- `ColoradoMonthlyData.dta`: Intermediate monthly dataset filtered to Colorado.
+- `ColoradoAllSalesTaxes.dta`: Monthly city-level tax rates aligned with Airbnb data.
+- `ColoradoPropertyMonthlyMerge.dta`: Final cleaned panel dataset for econometric analysis (property × month) with tax, location, and performance measures.
+
+## Script: 8_PSM_Balance.R
+
+### Description
+
+This R script builds a set of propensity score models to assess the impact of local tax enforcement on Airbnb hosts in Colorado. It merges tax change data with ZIP- and county-level demographics, evaluates covariate balance via standardized mean differences (SMDs), and performs forward stepwise variable selection to minimize overall imbalance. The script outputs datasets with inverse probability weights, covariate balance tables, love plots, and formatted regression summaries.
+
+### Inputs
+
+- `taxrates_changes.dta`: Monthly Airbnb tax data with treated/control indicators.
+- `colorado_zipcode_data.dta`: ACS ZIP-level data (2017).
+- `colorado_county_data.dta`: ACS county-level data (2017).
+- `R packages`: `MatchIt`, `cobalt`, `ebal`, `fixest`, `ggplot2`, `cowplot`, `rio`, `xtable`, etc.
+
+### Outputs
+
+- `colorado_psm_data.dta`: Matched dataset with predicted scores and weights.
+- `pscores_data.dta`: Contains `pscore`, `pscore_min`, `pscore_hr`, and `pscore_hr_min` for treatment variants.
+- `pscore_table_taxchange.tex` / `.jpg`: Latex and image versions of PSM regression tables.
+- `balance_table_plot.jpg`: Love plot of covariate balance for baseline PSM.
+- `balance_table_plot_comp.jpg`: Love plot comparing different PSM weighting schemes.
+- `balance_table_descriptive_vars.tex` / `.jpg`: Table of means and t-tests (weighted vs unweighted).
+- `balance_table_comp.tex` / `.jpg`: Combined table comparing different PSM approaches.
+
 ### Functions or Programs Created
-- None. The script uses standard R packages and functions from:
-  - `tidygeocoder` – for reverse geocoding.
-  - `readstata13` and `rio` – for reading Stata `.dta` files.
-  - `tibble`, `dplyr`, `tictoc` – for data handling and runtime tracking.
+
+- `format_plot(graph)`: Applies custom theme and layout for ggplot objects.
+- `save_graph(graph, name, size)`: Saves plots to file with consistent style.
+- `table_image(table, caption, file)`: Converts data frames to captioned JPEG tables.
+- `evaluate_ps_formula(formula, data)`: Runs a PS model and calculates covariate balance.
+- `forward_stepwise_sasmd(candidate_vars, data)`: Selects covariates minimizing SMD using forward search.
+- `test_weighted(data)`: Produces mean/sd stats and weighted vs unweighted t-tests for a covariate.
+
+## Script: 9_Build_Feasible_Stacked_DID_Data.do
+
+### Description
+This script implements the **stacked Difference-in-Differences design** following the procedure developed by Alex Hollingsworth, Coady Wing and Seth Freedman. It constructs multiple sub-experiments based on distinct tax change dates (referred to as "focal adoption times") and stacks them to form a single dataset for estimation. The key idea is to treat each tax change as a separate treatment event and use never-treated or late-treated cities as clean controls, trimming the event window to ±11 months around the intervention.
+
+The script defines and applies a program (`create_sub_exp`) to generate event-time variables and sub-experiment indicators for each treatment cohort, ensuring pre- and post-treatment balance. After stacking the individual datasets, it restricts the sample to valid comparisons, drops ambiguous cases (e.g., early or late adopters), and computes proper weighting schemes for treated and control units. The script further merges in precomputed propensity score weights, constructs adjusted weights for estimation, and saves a fully formatted panel dataset ready for use in stacked DiD estimation with covariate and weighting flexibility.
+
+### Inputs
+- `ColoradoPropertyMonthlyRectangular.dta`: Fully rectangularized panel of Airbnb listings merged with tax and geo variables.
+- `pscores_data.dta`: Precomputed propensity score weights by sub-experiment and ZIP code.
+
+### Outputs
+- `airbnb_subexp*.dta`: Sub-experiment-specific datasets generated per treatment date (temporary files).
+- `rcstackdid_rectangular.dta`: Final stacked DiD dataset with:
+  - Treatment assignment and event-time variables
+  - Listing activity flags
+  - Sub-experiment-specific weights and adjusted propensity score weights
+
+### Functions or Programs Created
+- `create_sub_exp`: A custom program that generates treatment/control status, event time, and sub-experiment indicators based on focal adoption time and feasibility windows.
+- `compute_weights`: A helper function to calculate normalized weights for treated and control units within each sub-experiment.
+
+## Script: 10_CreateMarketLevelData.do
+
+### Description
+
+This Stata script constructs a market-level dataset from Colorado Airbnb property data for use in a stacked Difference-in-Differences (DiD) analysis. It aggregates observations by ZIP code, city, and sub-experiment to compute average tax policy variables and listing intensity (as a share of local housing units). It also generates treatment indicators, event-time dummies, and normalized weights for each market-level observation. This data structure enables estimation of the policy effects at an aggregate scale.
+
+### Inputs
+
+- `${ai}/colorado_psm_data.dta`: Matched Airbnb property-level data with treatment info.
+- `${ai}/pscores_data.dta`: Propensity score weights by ZIP code and sub-experiment.
+- `${ai}/rcstackdid_rectangular.dta`: Rectangular property-level panel dataset.
+
+### Outputs
+
+- `${ai}/rcstackdid_mkt.dta`: Market-level panel dataset for stacked DiD estimation, with weights and covariates.
+
+## Functions Created
+
+- `market_level_data`: A Stata program that (1) aggregates listing and policy data to the ZIP-level, (2) merges housing unit counts, (3) computes listing density, and (4) constructs DiD weights using the `compute_weights` program from earlier scripts.
